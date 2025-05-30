@@ -131,31 +131,8 @@ void RobStrideMotor::send_motion_command(float torque,
 
 void RobStrideMotor::send_velocity_mode_command(float velocity_rad_s)
 {
-    struct can_frame frame{};
-    frame.can_id = (0x02<<8) | motor_id;
-    // frame.can_id |= CAN_EFF_FLAG; // 扩展帧
-    frame.can_dlc = 8;
-
-    float2uchar v;
-    float2uchar I;
-    v.f = velocity_rad_s;
-    I.f = 27.0f;
-
-    frame.data[0] = v.c[0];
-    frame.data[1] = v.c[1];
-    frame.data[2] = v.c[2];
-    frame.data[3] = v.c[3];
-    frame.data[4] = I.c[0];
-    frame.data[5] = I.c[1];
-    frame.data[6] = I.c[2];
-    frame.data[7] = I.c[3];
-
-    int n = write(socket_fd, &frame, sizeof(frame));
-    if (n != sizeof(frame))
-    {
-        perror("send_motion_command failed");
-    }
-
+	Set_RobStrite_Motor_parameter(0X7018, 27.0f, Set_parameter);
+	Set_RobStrite_Motor_parameter(0X700A, velocity_rad_s, Set_parameter);
 }
 
 
@@ -197,3 +174,4 @@ float RobStrideMotor::read_initial_position()
         }
     }
 }
+
