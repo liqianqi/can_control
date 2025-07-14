@@ -9,7 +9,7 @@ sudo ip link set can0 type can bitrate 1000000
 sudo ip link set can0 up
 sudo ifconfig can0 txqueuelen 100
 ```
-
+- 灵足时代的串口转CAN模块只适用于灵足时代的上位机，Linux上无法使用(除非解析串口数据，太麻烦)，所以在Linux上使用can-able设备，无需slcan
 - can0端口是一个示例，实际端口按自己的为准，可能是can1、can2等等。
 - 过程中可以使用这个命令查看can端口状态
 - 注意第五行的id，电机默认id是0x7F(127)
