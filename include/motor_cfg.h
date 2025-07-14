@@ -10,6 +10,8 @@
 #include <thread>
 #include <chrono>
 #include <ctime>
+#include <optional>
+#include <vector>
 
 #define Set_mode 	  'j' //设置控制模式
 #define Set_parameter 'p' //设置参数
@@ -33,6 +35,9 @@
 #define Communication_Type_SetSingleParameter 0x12  //设定单个参数
 #define Communication_Type_ErrorFeedback 0x15  //故障反馈帧
 
+// 定义返回类型（需要 C++17）
+using ReceiveResult = std::optional<std::tuple<uint8_t, uint16_t, uint8_t, std::vector<uint8_t>>>;
+
 typedef union
 {
     float f;
@@ -54,12 +59,51 @@ public:
             close(socket_fd);
     }
 
+    ReceiveResult receive(double timeout_sec = 0)
+    {
+        // 设置超时时间
+        if (timeout_sec > 0)
+        {
+            struct timeval timeout;
+            timeout.tv_sec = static_cast<int>(timeout_sec);
+            timeout.tv_usec = static_cast<int>((timeout_sec - timeout.tv_sec) * 1e6);
+            setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        }
+
+        struct can_frame frame;
+        std::memset(&frame, 0, sizeof(frame));
+
+        ssize_t nbytes = recv(socket_fd, &frame, sizeof(struct can_frame), 0);
+        if (nbytes <= 0)
+        {
+            return std::nullopt; // 超时或失败
+        }
+
+        // 检查是否是扩展帧
+        if (!(frame.can_id & CAN_EFF_FLAG))
+        {
+            throw std::runtime_error("Frame is not extended ID");
+        }
+
+        uint32_t can_id = frame.can_id & CAN_EFF_MASK;
+
+        uint8_t communication_type = (can_id >> 24) & 0x1F;
+        uint16_t extra_data = (can_id >> 8) & 0xFFFF;
+        uint8_t host_id = can_id & 0xFF;
+
+        std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
+
+        return std::make_tuple(communication_type, extra_data, host_id, data);
+    }
+
+    std::tuple<float, float, float, float> receive_status_frame();
+
     void Set_RobStrite_Motor_parameter(uint16_t Index, float Value, char Value_mode);
 
-    void send_velocity_mode_command(float velocity_rad_s);
+    std::tuple<float, float, float, float> send_velocity_mode_command(float velocity_rad_s);
 
     // 发送使能指令（通信类型3）
-    void enable_motor();
+    std::tuple<float, float, float, float> enable_motor();
 
     float read_initial_position();
 
@@ -67,7 +111,7 @@ public:
 
     uint16_t float_to_uint(float x, float x_min, float x_max, int bits);
     // 发送运控模式（控制角度 + 速度 + KP + KD）
-    void send_motion_command(float torque,
+    std::tuple<float, float, float, float> send_motion_command(float torque,
                              float position_rad,
                              float velocity_rad_s,
                              float kp = 0.5f,

@@ -12,6 +12,8 @@ sudo ifconfig can0 txqueuelen 100
 
 - can0端口是一个示例，实际端口按自己的为准，可能是can1、can2等等。
 - 过程中可以使用这个命令查看can端口状态
+- 注意第五行的id，电机默认id是0x7F
+- 电机每发送一次命令就会返回一帧数据，数据包含当前电机位置，速度，扭矩，温度信息
 ```shell
 ip -d link show can0    (can0换成自己的端口)
 ```
