@@ -26,6 +26,17 @@ void RobStrideMotor::init_socket()
         perror("bind");
         exit(1);
     }
+
+    struct can_filter rfilter[1];
+    rfilter[0].can_id   = (motor_id << 8) | CAN_EFF_FLAG;   // Bit8~Bit15 放电机ID，高位扩展帧标志
+    rfilter[0].can_mask = (0xFF << 8) | CAN_EFF_FLAG;          // 只匹配 Bit8~Bit15 + 扩展帧标志
+
+    if (setsockopt(socket_fd, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter)) < 0) 
+    {
+        perror("setsockopt filter");
+        exit(1);
+    }
+
 }
 
 std::tuple<float, float, float, float> RobStrideMotor::receive_status_frame()
