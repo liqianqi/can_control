@@ -1,3 +1,4 @@
+#include <atomic>
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -22,6 +23,12 @@
 #define Elect_control_mode 3 //电流模式
 #define Set_Zero_mode      4 //零点模式
 
+#define SC_MAX 23.0f
+#define SC_MIN 0.0f
+#define SV_MAX 20.0f
+#define SV_MIN -20.0f
+#define SCIQ_MIN -23.0f
+
 //通信地址
 #define Communication_Type_Get_ID 0x00  //获取设备的ID和64位MCU唯一标识符`
 #define Communication_Type_MotionControl 0x01  //运控模式用来向主机发送控制指令
@@ -44,6 +51,28 @@ typedef union
     unsigned char c[4];
 }float2uchar;
 
+typedef struct
+{
+	int set_motor_mode;
+	float set_current;
+	float set_speed;
+	float set_Torque;
+	float set_angle;
+	float set_limit_cur;
+	float set_Kp;
+	float set_Ki;
+	float set_Kd;
+	float set_iq;
+	float set_id;
+	float set_acc;
+}Motor_Set;
+
+class data_read_write_one {
+public:
+    uint16_t index;
+    float data;
+};
+
 class RobStrideMotor
 {
 public:
@@ -55,6 +84,8 @@ public:
 
     ~RobStrideMotor()
     {
+        Disenable_Motor(0x01);
+        sleep(1);
         if (socket_fd >= 0)
             close(socket_fd);
     }
@@ -74,11 +105,12 @@ public:
         std::memset(&frame, 0, sizeof(frame));
 
         ssize_t nbytes = recv(socket_fd, &frame, sizeof(struct can_frame), 0);
+
         if (nbytes <= 0)
         {
             return std::nullopt; // 超时或失败
         }
-
+    
         // 检查是否是扩展帧
         if (!(frame.can_id & CAN_EFF_FLAG))
         {
@@ -96,7 +128,17 @@ public:
         return std::make_tuple(communication_type, extra_data, host_id, data);
     }
 
-    std::tuple<float, float, float, float> receive_status_frame();
+    std::tuple<float, float, float, float> return_data_pvtt()
+    {
+        std::cout << "-----position_feedback: " << position_ << std::endl;
+        std::cout << "-----velocity_feedback: " << velocity_ << std::endl;
+        std::cout << "-----torque: " << torque_ << std::endl;
+        std::cout << "-----temperature: " << temperature_ << std::endl;
+
+        return std::make_tuple(position_, velocity_, torque_, temperature_);
+    }
+
+    void receive_status_frame();
 
     void Set_RobStrite_Motor_parameter(uint16_t Index, float Value, char Value_mode);
 
@@ -123,9 +165,27 @@ public:
         return ((float)x_int) * span / ((1 << bits) - 1) + x_min;
     }
 
+	void Get_RobStrite_Motor_parameter(uint16_t Index);
+	std::tuple<float, float, float, float> RobStrite_Motor_PosPP_control(float Speed, float Acceleration, float Angle);
+	std::tuple<float, float, float, float> RobStrite_Motor_Current_control(float IqCommand, float IdCommand);
+	void RobStrite_Motor_PosCSP_control(float Speed, float Angle);
+	void RobStrite_Motor_Set_Zero_control();
+	void Disenable_Motor( uint8_t clear_error);
+	void Set_CAN_ID(uint8_t Set_CAN_ID);
+	void Set_ZeroPos();
+
 private:
     std::string iface;
     uint8_t master_id;
     uint8_t motor_id;
     int socket_fd = -1;
+	Motor_Set Motor_Set_All;	// 设定值
+    data_read_write_one params;
+
+    float position_ = 0.0;
+    float velocity_ = 0.0;
+    float torque_ = 0.0;
+    float temperature_ = 0.0;
+
+    std::atomic<bool> is_move_control_first = true;
 };

@@ -1,13 +1,22 @@
 #include "motor_cfg.h"
+#include <csignal>
+#include <atomic>
+
+std::atomic<bool> running(true);
+
+void signal_handler(int) {
+    running = false;
+}
 
 int main(int argc, char **argv)
 {
     RobStrideMotor motor("can0", 0xFF, 0x01);
+    signal(SIGINT, signal_handler); // 捕获 Ctrl+C
 
-    // motor.Set_RobStrite_Motor_parameter(0X7005, move_control_mode, Set_mode);		//设置电机模式
-    motor.Set_RobStrite_Motor_parameter(0X7005, Speed_control_mode, Set_mode);		//设置电机模式
+    // // motor.Set_RobStrite_Motor_parameter(0X7005, move_control_mode, Set_mode);		//设置电机模式
+    // motor.Set_RobStrite_Motor_parameter(0X7005, Speed_control_mode, Set_mode);		//设置电机模式
 
-    motor.enable_motor(); // 1. 使能电机
+    // motor.enable_motor(); // 1. 使能电机
 
     sleep(1);
 
@@ -19,7 +28,7 @@ int main(int argc, char **argv)
 
     // float dt = 0.02f;
     auto init = std::chrono::system_clock::now();
-    while (true)
+    while (running)
     {
         // auto now = std::chrono::system_clock::now();
         // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - init);
