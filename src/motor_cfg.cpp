@@ -39,7 +39,7 @@ void RobStrideMotor::init_socket()
 
 }
 
-std::tuple<float, float, float, float> RobStrideMotor::receive_status_frame()
+void RobStrideMotor::receive_status_frame()
 {
     auto result = receive();
     if (!result)
@@ -49,38 +49,44 @@ std::tuple<float, float, float, float> RobStrideMotor::receive_status_frame()
 
     auto [communication_type, extra_data, host_id, data] = *result;
 
-    uint8_t status_mode = (extra_data >> 14) & 0x03;
-    uint8_t status_uncalibrated = (extra_data >> 13) & 0x01;
-    uint8_t status_hall_encoder_fault = (extra_data >> 12) & 0x01;
-    uint8_t status_magnetic_encoder_fault = (extra_data >> 11) & 0x01;
-    uint8_t status_overtemperature = (extra_data >> 10) & 0x01;
-    uint8_t status_overcurrent = (extra_data >> 9) & 0x01;
-    uint8_t status_undervoltage = (extra_data >> 8) & 0x01;
-    uint8_t device_id = (extra_data >> 0) & 0xFF;
-
-    if (communication_type != Communication_Type_MotorRequest)
-    {
-        throw std::runtime_error("Invalid communication type");
-    }
-
+    // uint8_t status_mode = (extra_data >> 14) & 0x03;
+    // uint8_t status_uncalibrated = (extra_data >> 13) & 0x01;
+    // uint8_t status_hall_encoder_fault = (extra_data >> 12) & 0x01;
+    // uint8_t status_magnetic_encoder_fault = (extra_data >> 11) & 0x01;
+    // uint8_t status_overtemperature = (extra_data >> 10) & 0x01;
+    // uint8_t status_overcurrent = (extra_data >> 9) & 0x01;
+    // uint8_t status_undervoltage = (extra_data >> 8) & 0x01;
+    // uint8_t device_id = (extra_data >> 0) & 0xFF;
     if (data.size() < 8)
     {
         throw std::runtime_error("Data size too small");
     }
 
-    // 解析数据：高字节在前（大端序）
-    uint16_t position_u16 = (data[0] << 8) | data[1];
-    uint16_t velocity_u16 = (data[2] << 8) | data[3];
-    uint16_t torque_i16 = (data[4] << 8) | data[5];
-    uint16_t temperature_u16 = (data[6] << 8) | data[7];
+    std::cout << "communication_type: " << static_cast<int>(communication_type) << std::endl;
+    if (communication_type == Communication_Type_MotorRequest)
+    {
+        // 解析数据：高字节在前（大端序）
+        uint16_t position_u16 = (data[0] << 8) | data[1];
+        uint16_t velocity_u16 = (data[2] << 8) | data[3];
+        uint16_t torque_i16 = (data[4] << 8) | data[5];
+        uint16_t temperature_u16 = (data[6] << 8) | data[7];
 
-    // 转换成物理量
-    float position = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (4.0f * static_cast<float>(M_PI));
-    float velocity = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * 44.0f;
-    float torque = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * 17.0f;
-    float temperature = static_cast<float>(temperature_u16) * 0.1f;
+        // 转换成物理量
+        position_ = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (4.0f * static_cast<float>(M_PI));
+        velocity_ = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * 44.0f;
+        torque_ = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * 17.0f;
+        temperature_ = static_cast<float>(temperature_u16) * 0.1f;
 
-    return std::make_tuple(position, velocity, torque, temperature);
+    }
+    else if(communication_type == 17)
+    {
+        params.data = uint8_t(data[4]);
+        std::cout << params.data << std::endl;
+        params.index = 0X7005;
+    }else
+    {
+        throw std::runtime_error("Invalid communication type");
+    }
 }
 
 void RobStrideMotor::Set_RobStrite_Motor_parameter(uint16_t Index, float Value, char Value_mode)
@@ -118,6 +124,7 @@ void RobStrideMotor::Set_RobStrite_Motor_parameter(uint16_t Index, float Value, 
         std::cout << "[✓] Motor set-mode command sent." << std::endl;
     }
 }
+
 // 发送使能指令（通信类型3）
 std::tuple<float, float, float, float> RobStrideMotor::enable_motor()
 {
@@ -136,7 +143,8 @@ std::tuple<float, float, float, float> RobStrideMotor::enable_motor()
     {
         std::cout << "[✓] Motor enable command sent." << std::endl;
     }
-    return receive_status_frame();
+    receive_status_frame();
+    std::make_tuple(position_, velocity_, torque_, temperature_);
 }
 
 uint16_t RobStrideMotor::float_to_uint(float x, float x_min, float x_max, int bits)
@@ -157,6 +165,16 @@ std::tuple<float, float, float, float> RobStrideMotor::send_motion_command(float
                                                                            float kp,
                                                                            float kd)
 {
+    Get_RobStrite_Motor_parameter(0x7005);
+    receive_status_frame();
+
+    if(params.data != 0 || is_move_control_first == true)
+    {
+        Set_RobStrite_Motor_parameter(0X7005, move_control_mode, Set_mode);
+        enable_motor();
+        sleep(1);
+        is_move_control_first = false;
+    }
     struct can_frame frame{};
     frame.can_id = (Communication_Type_MotionControl << 24) | (float_to_uint(torque, -17.0f, 17.0f, 16) << 8) | motor_id;
     frame.can_id |= CAN_EFF_FLAG; // 扩展帧
@@ -184,14 +202,26 @@ std::tuple<float, float, float, float> RobStrideMotor::send_motion_command(float
     {
         perror("send_motion_command failed");
     }
-    return receive_status_frame();
+    receive_status_frame();
+    return std::make_tuple(position_, velocity_, torque_, temperature_);
 }
 
 std::tuple<float, float, float, float> RobStrideMotor::send_velocity_mode_command(float velocity_rad_s)
 {
+    Get_RobStrite_Motor_parameter(0x7005);
+    receive_status_frame();
+
+    if(params.data != 2)
+    {
+        Set_RobStrite_Motor_parameter(0X7005, Speed_control_mode, Set_mode);
+        enable_motor();
+        sleep(1);
+    }
+
     Set_RobStrite_Motor_parameter(0X7018, 27.0f, Set_parameter);
     Set_RobStrite_Motor_parameter(0X700A, velocity_rad_s, Set_parameter);
-    return receive_status_frame();
+    receive_status_frame();
+    return std::make_tuple(position_, velocity_, torque_, temperature_);
 }
 
 float RobStrideMotor::read_initial_position()
@@ -232,3 +262,189 @@ float RobStrideMotor::read_initial_position()
         }
     }
 }
+
+
+void RobStrideMotor::Get_RobStrite_Motor_parameter(uint16_t Index)
+{
+    struct can_frame frame{};
+    frame.can_id = (Communication_Type_GetSingleParameter << 24) | (master_id << 8) | motor_id;
+    frame.can_id |= CAN_EFF_FLAG; // 扩展帧
+    frame.can_dlc = 8;
+
+    frame.data[0] = Index;
+    frame.data[1] = Index>>8;
+    frame.data[2] = 0x00;
+    frame.data[3] = 0x00;
+    frame.data[4] = 0x00;
+    frame.data[5] = 0x00;
+    frame.data[6] = 0x00;
+    frame.data[7] = 0x00;
+    int n = write(socket_fd, &frame, sizeof(frame));
+
+    if (n != sizeof(frame))
+    {
+        perror("get_motor_parameter failed");
+    }
+    std::cout << "excute Get_motor_params" << std::endl;
+
+}
+
+// 位置模式（PP）
+std::tuple<float, float, float, float> RobStrideMotor::RobStrite_Motor_PosPP_control(float Speed, float Acceleration, float Angle)
+{
+    Get_RobStrite_Motor_parameter(0x7005);
+    receive_status_frame();
+
+    if(params.data != 1)
+    {
+        Set_RobStrite_Motor_parameter(0X7005, Pos_control_mode, Set_mode);
+        enable_motor();
+        sleep(1);
+
+    }
+
+	Motor_Set_All.set_speed = Speed;
+	Motor_Set_All.set_acc   = Acceleration;
+	Motor_Set_All.set_angle = Angle;
+    
+	Set_RobStrite_Motor_parameter(0X7024, Motor_Set_All.set_speed, Set_parameter);
+	Set_RobStrite_Motor_parameter(0X7025, Motor_Set_All.set_acc,   Set_parameter);
+	Set_RobStrite_Motor_parameter(0X7016, Motor_Set_All.set_angle, Set_parameter);
+
+    receive_status_frame();
+    return std::make_tuple(position_, velocity_, torque_, temperature_);
+
+}
+
+// 电流模式
+std::tuple<float, float, float, float> RobStrideMotor::RobStrite_Motor_Current_control(float IqCommand, float IdCommand) {
+    Get_RobStrite_Motor_parameter(0x7005);
+    receive_status_frame();
+
+    if(params.data != 3)
+    {
+        Set_RobStrite_Motor_parameter(0X7005, Elect_control_mode, Set_mode);
+        enable_motor();
+        sleep(1);
+
+    }
+
+    // Store the target values
+    Motor_Set_All.set_iq = IqCommand;
+    Motor_Set_All.set_id = IdCommand;
+
+    Motor_Set_All.set_iq = float_to_uint(Motor_Set_All.set_iq, SCIQ_MIN,SC_MAX, 16);
+    Set_RobStrite_Motor_parameter(0X7006, Motor_Set_All.set_iq, Set_parameter);
+    Set_RobStrite_Motor_parameter(0X7007, Motor_Set_All.set_id, Set_parameter);
+    receive_status_frame();
+    return std::make_tuple(position_, velocity_, torque_, temperature_);
+
+}
+
+void RobStrideMotor::RobStrite_Motor_Set_Zero_control()
+{
+	Set_RobStrite_Motor_parameter(0X7005, Set_Zero_mode, Set_mode);					//设置电机模式
+}
+
+void RobStrideMotor::Disenable_Motor(uint8_t clear_error)
+{
+    struct can_frame frame{};
+    frame.can_id = (Communication_Type_MotorStop << 24) | (master_id << 8) | motor_id;
+    frame.can_id |= CAN_EFF_FLAG; // 扩展帧
+    frame.can_dlc = 8;
+    memset(frame.data, 0, 8);
+
+    frame.data[0] = clear_error;
+    frame.data[1] = 0x00;
+    frame.data[2] = 0x00;
+    frame.data[3] = 0x00;
+    frame.data[4] = 0x00;
+    frame.data[5] = 0x00;
+    frame.data[6] = 0x00;
+    frame.data[7] = 0x00;
+
+    int n = write(socket_fd, &frame, sizeof(frame));
+
+    if (n != sizeof(frame))
+    {
+        perror("disable_motor failed");
+    }
+    else
+    {
+        std::cout << "[✓] Motor disable command sent." << std::endl;
+    }
+}
+
+void RobStrideMotor::Set_CAN_ID(uint8_t Set_CAN_ID)
+{
+	Disenable_Motor(0);
+
+    struct can_frame frame{};
+    frame.can_id = (Communication_Type_Can_ID<<24) | (Set_CAN_ID<<16) | (master_id << 8) | motor_id;
+    frame.can_id |= CAN_EFF_FLAG; // 扩展帧
+    frame.can_dlc = 8;
+    memset(frame.data, 0, 8);
+
+    frame.data[0] = 0x00;
+    frame.data[1] = 0x00;
+    frame.data[2] = 0x00;
+    frame.data[3] = 0x00;
+    frame.data[4] = 0x00;
+    frame.data[5] = 0x00;
+    frame.data[6] = 0x00;
+    frame.data[7] = 0x00;
+
+    int n = write(socket_fd, &frame, sizeof(frame));
+
+    if (n != sizeof(frame))
+    {
+        perror("Set_ZeroPos failed");
+    }
+    else
+    {
+        std::cout << "[✓] Motor Set_ZeroPos command sent." << std::endl;
+    }
+}
+
+void RobStrideMotor::Set_ZeroPos()
+{
+	Disenable_Motor(0);
+
+    Get_RobStrite_Motor_parameter(0x7005);
+    receive_status_frame();
+
+    if(params.data != 4)
+    {
+        Set_RobStrite_Motor_parameter(0X7005, Speed_control_mode, Set_mode);
+    }
+
+    struct can_frame frame{};
+    frame.can_id = (Communication_Type_SetPosZero << 24) | (master_id << 8) | motor_id;
+    frame.can_id |= CAN_EFF_FLAG; // 扩展帧
+    frame.can_dlc = 8;
+    memset(frame.data, 0, 8);
+
+    frame.data[0] = 1;
+    frame.data[1] = 0x00;
+    frame.data[2] = 0x00;
+    frame.data[3] = 0x00;
+    frame.data[4] = 0x00;
+    frame.data[5] = 0x00;
+    frame.data[6] = 0x00;
+    frame.data[7] = 0x00;
+
+    int n = write(socket_fd, &frame, sizeof(frame));
+
+    if (n != sizeof(frame))
+    {
+        perror("Set_ZeroPos failed");
+    }
+    else
+    {
+        std::cout << "[✓] Motor Set_ZeroPos command sent." << std::endl;
+    }
+
+	enable_motor();
+}
+
+
