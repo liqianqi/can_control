@@ -10,7 +10,7 @@ void signal_handler(int) {
 
 int main(int argc, char **argv)
 {
-    RobStrideMotor motor("can0", 0xFF, 0x01);
+    RobStrideMotor motor("can1", 0xFF, 0x01);
     signal(SIGINT, signal_handler); // 捕获 Ctrl+C
 
     // // motor.Set_RobStrite_Motor_parameter(0X7005, move_control_mode, Set_mode);		//设置电机模式
