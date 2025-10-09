@@ -85,8 +85,6 @@ static const std::map<ActuatorType, ActuatorOperation> ACTUATOR_OPERATION_MAPPIN
 };
 
 
-
-
 // 定义返回类型（需要 C++17）
 using ReceiveResult = std::optional<std::tuple<uint8_t, uint16_t, uint8_t, std::vector<uint8_t>>>;
 
