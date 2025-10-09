@@ -75,9 +75,9 @@ std::tuple<float, float, float, float> RobStrideMotor::receive_status_frame()
     uint16_t temperature_u16 = (data[6] << 8) | data[7];
 
     // 转换成物理量
-    float position = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (4.0f * static_cast<float>(M_PI));
-    float velocity = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * 44.0f;
-    float torque = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * 17.0f;
+    float position = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position);
+    float velocity = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity);
+    float torque = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque);
     float temperature = static_cast<float>(temperature_u16) * 0.1f;
 
     return std::make_tuple(position, velocity, torque, temperature);
@@ -158,15 +158,15 @@ std::tuple<float, float, float, float> RobStrideMotor::send_motion_command(float
                                                                            float kd)
 {
     struct can_frame frame{};
-    frame.can_id = (Communication_Type_MotionControl << 24) | (float_to_uint(torque, -17.0f, 17.0f, 16) << 8) | motor_id;
+    frame.can_id = (Communication_Type_MotionControl << 24) | (float_to_uint(torque, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque, 16) << 8) | motor_id;
     frame.can_id |= CAN_EFF_FLAG; // 扩展帧
     // frame.can_id = 0x1200fd01;
     frame.can_dlc = 8;
 
-    uint16_t pos = float_to_uint(position_rad, -4 * M_PI, 4 * M_PI, 16);
-    uint16_t vel = float_to_uint(velocity_rad_s, -44, 44, 16);
-    uint16_t kp_u = float_to_uint(kp, 0, 500, 16);
-    uint16_t kd_u = float_to_uint(kd, 0, 5, 16);
+    uint16_t pos = float_to_uint(position_rad, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position, 16);
+    uint16_t vel = float_to_uint(velocity_rad_s, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity, 16);
+    uint16_t kp_u = float_to_uint(kp, 0.0f, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).kp, 16);
+    uint16_t kd_u = float_to_uint(kd, 0.0f, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).kd, 16);
 
     frame.data[0] = (pos >> 8);
     frame.data[1] = pos;

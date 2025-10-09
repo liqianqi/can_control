@@ -2,7 +2,7 @@
 
 int main(int argc, char **argv)
 {
-    RobStrideMotor motor("can0", 0xFF, 0x01);
+    RobStrideMotor motor("can0", 0xFF, 0x01, 2);
 
     // motor.Set_RobStrite_Motor_parameter(0X7005, move_control_mode, Set_mode);		//设置电机模式
     motor.Set_RobStrite_Motor_parameter(0X7005, Speed_control_mode, Set_mode);		//设置电机模式

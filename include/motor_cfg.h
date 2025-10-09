@@ -12,7 +12,7 @@
 #include <ctime>
 #include <optional>
 #include <vector>
-
+#include <map>
 #define Set_mode 	  'j' //设置控制模式
 #define Set_parameter 'p' //设置参数
 //各种控制模式
@@ -35,6 +35,58 @@
 #define Communication_Type_SetSingleParameter 0x12  //设定单个参数
 #define Communication_Type_ErrorFeedback 0x15  //故障反馈帧
 
+
+#define P_MIN -12.5f
+#define P_MAX 12.5f
+#define V_MIN -44.0f 
+#define V_MAX 44.0f
+#define KP_MIN 0.0f
+#define KP_MAX 500.0f
+#define KD_MIN 0.0f
+#define KD_MAX 5.0f
+#define T_MIN -17.0f
+#define T_MAX 17.0f
+
+//---------------------------------------------
+// 电机类型定义
+//---------------------------------------------
+enum class ActuatorType {
+    ROBSTRIDE_00 = 0,
+    ROBSTRIDE_01 = 1,
+    ROBSTRIDE_02 = 2,
+    ROBSTRIDE_03 = 3,
+    ROBSTRIDE_04 = 4,
+    ROBSTRIDE_05 = 5,
+    ROBSTRIDE_06 = 6
+};
+
+//---------------------------------------------
+// 电机运行参数结构体
+//---------------------------------------------
+struct ActuatorOperation {
+    double position;   // rad
+    double velocity;   // rad/s
+    double torque;     // Nm
+    double kp;
+    double kd;
+};
+
+//---------------------------------------------
+// 电机类型对应运行参数映射
+//---------------------------------------------
+static const std::map<ActuatorType, ActuatorOperation> ACTUATOR_OPERATION_MAPPING = {
+    { ActuatorType::ROBSTRIDE_00,       { 4 * M_PI, 50, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_01,       { 4 * M_PI, 44, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_02,       { 4 * M_PI, 44, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_03,       { 4 * M_PI, 50, 60, 5000.0, 100.0 } },
+    { ActuatorType::ROBSTRIDE_04,       { 4 * M_PI, 15, 120, 5000.0, 100.0 } },
+    { ActuatorType::ROBSTRIDE_05,       { 4 * M_PI, 33, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_06,       { 4 * M_PI, 20, 60, 5000.0, 100.0 } },
+};
+
+
+
+
 // 定义返回类型（需要 C++17）
 using ReceiveResult = std::optional<std::tuple<uint8_t, uint16_t, uint8_t, std::vector<uint8_t>>>;
 
@@ -47,8 +99,8 @@ typedef union
 class RobStrideMotor
 {
 public:
-    RobStrideMotor(const std::string can_interface, uint8_t master_id, uint8_t motor_id)
-        : iface(can_interface), master_id(master_id), motor_id(motor_id)
+    RobStrideMotor(const std::string can_interface, uint8_t master_id, uint8_t motor_id, int actuator_type)
+        : iface(can_interface), master_id(master_id), motor_id(motor_id), actuator_type(actuator_type)
     {
         init_socket();
     }
@@ -127,5 +179,6 @@ private:
     std::string iface;
     uint8_t master_id;
     uint8_t motor_id;
+    int actuator_type;
     int socket_fd = -1;
 };
