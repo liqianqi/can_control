@@ -37,6 +37,9 @@ void RobStrideMotor::init_socket()
         exit(1);
     }
 
+    int recv_own_msgs = 0;
+    setsockopt(socket_fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs, sizeof(recv_own_msgs));
+
 }
 
 void RobStrideMotor::receive_status_frame()
@@ -72,10 +75,15 @@ void RobStrideMotor::receive_status_frame()
         uint16_t temperature_u16 = (data[6] << 8) | data[7];
 
         // 转换成物理量
-        position_ = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (4.0f * static_cast<float>(M_PI));
-        velocity_ = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * 44.0f;
-        torque_ = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * 17.0f;
+        position_ = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position);
+        velocity_ = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity);
+        torque_ = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * (ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque);
         temperature_ = static_cast<float>(temperature_u16) * 0.1f;
+
+        // position_ = ((static_cast<float>(position_u16) / 32767.0f) - 1.0f) * (4.0f * static_cast<float>(M_PI));
+        // velocity_ = ((static_cast<float>(velocity_u16) / 32767.0f) - 1.0f) * 44.0f; 
+        // torque_ = ((static_cast<float>(torque_i16) / 32767.0f) - 1.0f) * 17.0f;
+        // temperature_ = static_cast<float>(temperature_u16) * 0.1f;
 
     }
     else if(communication_type == 17)
@@ -118,7 +126,7 @@ void RobStrideMotor::Set_RobStrite_Motor_parameter(uint16_t Index, float Value, 
     if (n != sizeof(frame))
     {
         perror("set mode failed");
-    }
+    } 
     else
     {
         std::cout << "[✓] Motor set-mode command sent." << std::endl;
@@ -176,15 +184,15 @@ std::tuple<float, float, float, float> RobStrideMotor::send_motion_command(float
         is_move_control_first = false;
     }
     struct can_frame frame{};
-    frame.can_id = (Communication_Type_MotionControl << 24) | (float_to_uint(torque, -17.0f, 17.0f, 16) << 8) | motor_id;
+    frame.can_id = (Communication_Type_MotionControl << 24) | (float_to_uint(torque, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).torque, 16) << 8) | motor_id;
     frame.can_id |= CAN_EFF_FLAG; // 扩展帧
     // frame.can_id = 0x1200fd01;
     frame.can_dlc = 8;
 
-    uint16_t pos = float_to_uint(position_rad, -4 * M_PI, 4 * M_PI, 16);
-    uint16_t vel = float_to_uint(velocity_rad_s, -44, 44, 16);
-    uint16_t kp_u = float_to_uint(kp, 0, 500, 16);
-    uint16_t kd_u = float_to_uint(kd, 0, 5, 16);
+    uint16_t pos = float_to_uint(position_rad, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).position, 16);
+    uint16_t vel = float_to_uint(velocity_rad_s, -ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).velocity, 16);
+    uint16_t kp_u = float_to_uint(kp, 0.0f, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).kp, 16);
+    uint16_t kd_u = float_to_uint(kd, 0.0f, ACTUATOR_OPERATION_MAPPING.at(static_cast<ActuatorType>(actuator_type)).kd, 16);
 
     frame.data[0] = (pos >> 8);
     frame.data[1] = pos;

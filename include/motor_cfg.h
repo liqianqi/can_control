@@ -13,6 +13,7 @@
 #include <ctime>
 #include <optional>
 #include <vector>
+#include <map>
 
 #define Set_mode 	  'j' //设置控制模式
 #define Set_parameter 'p' //设置参数
@@ -73,11 +74,48 @@ public:
     float data;
 };
 
+//---------------------------------------------
+// 电机类型定义
+//---------------------------------------------
+enum class ActuatorType {
+    ROBSTRIDE_00 = 0,
+    ROBSTRIDE_01 = 1,
+    ROBSTRIDE_02 = 2,
+    ROBSTRIDE_03 = 3,
+    ROBSTRIDE_04 = 4,
+    ROBSTRIDE_05 = 5,
+    ROBSTRIDE_06 = 6
+};
+
+//---------------------------------------------
+// 电机运行参数结构体
+//---------------------------------------------
+struct ActuatorOperation {
+    double position;   // rad
+    double velocity;   // rad/s
+    double torque;     // Nm
+    double kp;
+    double kd;
+};
+
+//---------------------------------------------
+// 电机类型对应运行参数映射
+//---------------------------------------------
+static const std::map<ActuatorType, ActuatorOperation> ACTUATOR_OPERATION_MAPPING = {
+    { ActuatorType::ROBSTRIDE_00,       { 4 * M_PI, 50, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_01,       { 4 * M_PI, 44, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_02,       { 4 * M_PI, 44, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_03,       { 4 * M_PI, 50, 60, 5000.0, 100.0 } },
+    { ActuatorType::ROBSTRIDE_04,       { 4 * M_PI, 15, 120, 5000.0, 100.0 } },
+    { ActuatorType::ROBSTRIDE_05,       { 4 * M_PI, 33, 17, 500.0, 5.0 } },
+    { ActuatorType::ROBSTRIDE_06,       { 4 * M_PI, 20, 60, 5000.0, 100.0 } },
+};
+
 class RobStrideMotor
 {
 public:
-    RobStrideMotor(const std::string can_interface, uint8_t master_id, uint8_t motor_id)
-        : iface(can_interface), master_id(master_id), motor_id(motor_id)
+    RobStrideMotor(const std::string can_interface, uint8_t master_id, uint8_t motor_id, int actuator_type)
+        : iface(can_interface), master_id(master_id), motor_id(motor_id), actuator_type(actuator_type)
     {
         init_socket();
     }
@@ -103,9 +141,11 @@ public:
 
         struct can_frame frame;
         std::memset(&frame, 0, sizeof(frame));
+        std::cout << __LINE__ << std::endl;
 
         ssize_t nbytes = recv(socket_fd, &frame, sizeof(struct can_frame), 0);
 
+        std::cout << __LINE__ << std::endl;
         if (nbytes <= 0)
         {
             return std::nullopt; // 超时或失败
@@ -186,6 +226,7 @@ private:
     float velocity_ = 0.0;
     float torque_ = 0.0;
     float temperature_ = 0.0;
+    int actuator_type;
 
     std::atomic<bool> is_move_control_first = true;
 };
